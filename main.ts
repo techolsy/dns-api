@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { createMiddleware } from 'hono/factory';
 
 type ReturnMessage = {
   message: string,
@@ -15,6 +16,13 @@ type HostName = {
 };
 
 const app = new Hono();
+
+const logger = createMiddleware(async (c, next) => {
+  console.log(`[${c.req.method}] ${c.req.url}`);
+  await next();
+});
+
+app.use(logger);
 
 app.get('/ping', (c) => {
   const response = ping()
