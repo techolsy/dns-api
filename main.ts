@@ -52,10 +52,15 @@ app.post('/add', async (c) => {
   }
   try {
     await appendHost(data);
-    return c.json({ success: true, message: "Host added", host: data.host, ip: data.ip });
   } catch (e) {
     throw new HTTPException(401, { message: "Failed to add host", cause: e });
   };
+  try {
+    await reloadDns();
+  } catch (e) {
+    throw new HTTPException(401, { message: "Host added, but failed to reload dns", cause: e });
+  }
+  return c.json({ success: true, message: "Host added", host: data.host, ip: data.ip });
 });
 
 app.post('/del', async (c) => {
@@ -152,3 +157,18 @@ async function listHosts() {
 
   return hosts;
 };
+
+async function reloadDns() {
+  const cmd = new Deno.Command("systemctl", {
+    args: [
+      "reload",
+      "dnsmasq.service"
+    ],
+  });
+
+  try {
+    await cmd.output();
+  } catch (e) {
+    console.log(e);
+  };
+}
