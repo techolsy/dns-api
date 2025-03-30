@@ -1,4 +1,4 @@
-import { Context, Hono } from 'hono';
+import { Context, Next, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
 import { create, verify, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
@@ -35,7 +35,7 @@ const loadUsers = async () => {
 
 const app = new Hono();
 
-const authMiddleWare = async (c: Context, next) => {
+const authMiddleWare = async (c: Context, next: Next) => {
   const authHeader = c.req.header("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return c.json({ error: "Unauthorized" }, 401);
