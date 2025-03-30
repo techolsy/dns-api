@@ -1,6 +1,7 @@
-import { Hono } from 'hono';
+import { Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
+import { create, verify, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 type ReturnMessage = {
   message: string,
@@ -15,16 +16,66 @@ type HostName = {
   host: string,
 };
 
+async function generateKey(secret: string): Promise<CryptoKey> {
+  return await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    [ "sign", "verify"]
+  );
+}
+
+const SECRET_KEY = await generateKey("secret")
+
+const loadUsers = async () => {
+  const usersJson = await Deno.readTextFile("users.json");
+  return JSON.parse(usersJson).users;
+};
+
 const app = new Hono();
 
+const authMiddleWare = async (c: Context, next) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const payload = await verify(token, SECRET_KEY);
+    c.set("user", payload);
+    return next();
+  } catch {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+}
+
 app.use(logger());
+
+app.post('/login', async (c) => {
+  const {username, password} = await c.req.json();
+  const users = await loadUsers();
+
+  if (users[username] && users[username] === password) {
+    const jwt = await create(
+      { alg: "HS256", typ: "JWT" },
+      { username, exp: getNumericDate(60 * 60) },
+      SECRET_KEY
+    );
+    return c.json({ token: jwt })
+  }
+
+  return c.json({ error: "invalid credentials" }, 401);
+});
 
 app.get('/ping', (c) => {
   const response = ping()
   return c.json(response);
 });
 
-app.get('/list', async (c) => {
+app.get('/list', authMiddleWare, async (c) => {
   try {
     const data = await listHosts();
     return c.json({ 
@@ -36,7 +87,7 @@ app.get('/list', async (c) => {
   };
 });
 
-app.post('/add', async (c) => {
+app.post('/add', authMiddleWare, async (c) => {
   const data: HostData = await c.req.json();
   if (!data.host) {
     return c.json({ message: "host object is missing" }, 400);
@@ -63,7 +114,7 @@ app.post('/add', async (c) => {
   return c.json({ success: true, message: "Host added", host: data.host, ip: data.ip });
 });
 
-app.post('/del', async (c) => {
+app.post('/del', authMiddleWare, async (c) => {
   const host: HostName = await c.req.json();
   if (!host.host) {
     return c.json({ message: "host object is missing" }, 400);
